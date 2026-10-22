@@ -383,16 +383,6 @@
             </property>
            </widget>
           </item>
-          <item row="0" column="4">
-           <widget class="QPushButton" name="button_clean_selected">
-            <property name="toolTip">
-             <string>Relax the selected residue(s) with a local MMFF94 minimization - use this to fix steric clashes left by a newly-added capping group</string>
-            </property>
-            <property name="text">
-             <string>Clean selected</string>
-            </property>
-           </widget>
-          </item>
           <item row="0" column="2">
            <spacer name="horizontalSpacer_8">
             <property name="orientation">
@@ -448,6 +438,40 @@
              <string>Add</string>
             </property>
            </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QGridLayout" name="gridLayout_clean">
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_clean_desc">
+            <property name="text">
+             <string>In case of steric clashes from adding caps, select a cap and run a local minimization</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QPushButton" name="button_clean_selected">
+            <property name="toolTip">
+             <string>Relax the selected residue(s) with a local MMFF94 minimization - use this to fix steric clashes left by a newly-added capping group</string>
+            </property>
+            <property name="text">
+             <string>Run Local Minimization</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <spacer name="horizontalSpacer_clean">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
           </item>
          </layout>
         </item>
