@@ -53,6 +53,7 @@ class ModelPDB(QtWidgets.QMainWindow):
         self.pymol.ctermResidues.connect(self.update_cterm)
         self.pymol.dihedralSignal.connect(self.update_dihedral)
         self.pymol.countAtomsSignal.connect(self.update_atom_count)
+        self.pymol.resnSearchSignal.connect(self.handle_resn_search_result)
 
         # Connect UI widgets:
         self.ui.select_byres.clicked.connect(self.update_inclusion_size)
@@ -72,6 +73,7 @@ class ModelPDB(QtWidgets.QMainWindow):
         self.ui.button_auto_nterm.clicked.connect(self.auto_add_terminals)
         self.ui.button_delete_selected.clicked.connect(self.delete_selected)
         self.ui.button_add_group.clicked.connect(self.build_fragment)
+        self.ui.button_clean_selected.clicked.connect(self.clean_selected)
         self.ui.button_load_pdb.clicked.connect(self.load_pdb)
         self.ui.button_finalize.clicked.connect(self.copy_model)
         self.ui.button_export_model.clicked.connect(self.save_pdb_model)
@@ -202,6 +204,36 @@ class ModelPDB(QtWidgets.QMainWindow):
         # Reset central atoms
         self.selected_atoms["central"] = list()
         self.selected_atoms["included"] = list()
+
+        resn = self.ui.lineEdit_resn_search.text().strip()
+        if resn:
+            self.pymol.select_by_resn(resn)
+        else:
+            self.pymol.get_selected_atoms()
+
+    @pyqtSlot(str, list)
+    def handle_resn_search_result(self, resn, residues):
+        """
+        Signal from PymolProcess after a residue-name search (select_by_resn).
+        If the name matched zero or more than one distinct residue, warn and
+        leave the central selection unset rather than guessing.
+        :param resn: residue name searched for
+        :param residues: list of unique residue keys (chain+resi) matched
+        :return:
+        """
+        if len(residues) == 0:
+            self.react.append_text('No residue named "%s" found.' % resn)
+            return
+
+        if len(residues) > 1:
+            self.react.append_text(
+                'Residue "%s" matches %d separate residues. Please select the '
+                "desired residue manually in PyMOL instead." % (resn, len(residues))
+            )
+            self.pymol.pymol_cmd("delete sele")
+            return
+
+        # Unambiguous single match - proceed exactly like a manual click would
         self.pymol.get_selected_atoms()
 
     @pyqtSlot(list)
@@ -414,6 +446,15 @@ class ModelPDB(QtWidgets.QMainWindow):
         self.pymol.pymol_cmd("count_atoms model_tmp")
         self.pymol.pymol_cmd("count_atoms model_tmp and not sol.")
 
+    def clean_selected(self):
+        """
+        Relax whatever is currently selected in PyMOL (e.g. a newly-added
+        capping group with a steric clash) via a local MMFF94 minimization.
+        """
+        self.pymol.clean_selection(selection="sele")
+        self.pymol.pymol_cmd("count_atoms model_tmp")
+        self.pymol.pymol_cmd("count_atoms model_tmp and not sol.")
+
     def auto_add_terminals(self):
         """
         :return:
@@ -424,10 +465,14 @@ class ModelPDB(QtWidgets.QMainWindow):
         # Ensure included selection exists and points to model_tmp
         self.pymol.pymol_cmd("select included, model_tmp")
 
-        # Add hydrogens to terminal residues before capping
-        # This ensures proper attachment points for ACE/NME fragments
-        # self.pymol.pymol_cmd("cmd.h_add('nterm')")
-        # self.pymol.pymol_cmd("cmd.h_add('cterm')")
+        # Add hydrogens to nterm N atoms before capping - the nterm dihedral
+        # (C, CA, N, H) needs the "H" atom to already exist (get_terminal_
+        # dihedrals runs before add_fragment's own per-atom h_add). The
+        # cterm dihedral (N, CA, C, O) only needs pre-existing heavy atoms,
+        # and a freshly-cut carbonyl C already has exactly one open valence
+        # for NME to attach to - adding a hydrogen here would block it (see
+        # add_fragment in PymolProcess.py), so cterm atoms are left alone.
+        self.pymol.pymol_cmd("h_add nterm")
 
         # Delay to allow h_add to complete before getting terminal dihedrals
         QtCore.QTimer.singleShot(100, lambda: self._start_terminal_capping())

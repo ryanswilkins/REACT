@@ -10,6 +10,8 @@ class PymolSession(QObject):
     ctermResidues = pyqtSignal(list)
     countAtomsSignal = pyqtSignal(dict)
     importSavedPDB = pyqtSignal(str)
+    # (resn searched, list of unique residue keys matched)
+    resnSearchSignal = pyqtSignal(str, list)
     # atomClickedSignal = pyqtSignal(list)
     overallChargeSignal = pyqtSignal(str)
     # Signal for text messages to avoid cross-thread GUI calls
@@ -56,6 +58,12 @@ class PymolSession(QObject):
                 "process": self.collect_iterate,
                 "return": "iterated",
                 "signal": self.return_sel_atomnr,
+            },
+            "iterate sele, (ord(chain[0])": {
+                "collect": False,
+                "process": self.collect_iterate,
+                "return": "iterated",
+                "signal": self.return_resn_check,
             },
             "iterate included, ID": {
                 "collect": False,
@@ -330,6 +338,30 @@ class PymolSession(QObject):
         """
         self.pymol_cmd("iterate %s, %s" % (sele, type))
 
+    def select_by_resn(self, resn, sele_name="sele"):
+        """
+        Select atoms matching a residue name and check how many distinct
+        residues (chain+resi) matched, so callers can detect ambiguous names
+        (e.g. multiple copies of a ligand, or solvent like HOH) before using
+        the selection as a cluster-model center.
+        :param resn: residue name to search for (e.g. "COA")
+        :param sele_name: name of the pymol selection to build
+        :return:
+        """
+        self._resn_search_name = resn
+        self.pymol_cmd("select %s, resn %s" % (sele_name, resn))
+        # Chain-aware numeric key per atom - reuses the same numeric
+        # iterate/collect_iterate pattern already used for "int(resi)" above,
+        # so two residues with the same number in different chains aren't
+        # mistaken for the same residue.
+        # No spaces around the literal/operators: collect_iterate()'s fallback
+        # parser would otherwise misread a bare "1000000" token in the
+        # echoed command line itself as a real result.
+        self.pymol_cmd(
+            "iterate %s, (ord(chain[0])*1000000+int(resi))if chain else int(resi)"
+            % sele_name
+        )
+
     def get_dihedral(self, a1, a2, a3, a4):
         self.look_for_dihedral = True
         self.pymol_cmd("get_dihedral %s, %s, %s, %s" % (a1, a2, a3, a4))
@@ -354,17 +386,82 @@ class PymolSession(QObject):
         if fragment == "H":
             cmd = "h_add %s" % attach_to
         elif fragment == "methyl":
-            if attach_to != "pk1":
-                self.pymol_cmd("select sele, first sele")
-                self.pymol_cmd("edit %s" % attach_to)
-            cmd = "editor.attach_fragment('pk1', 'methane', 1, 0)"
+            # attach_fragment(selection, ...) wants a real named selection,
+            # not the literal string 'pk1' (verified against PyMOL's actual
+            # editor.py source: it checks "selection not in
+            # get_names('selections')", which 'pk1' never satisfies, so
+            # passing 'pk1' always created a disconnected standalone
+            # fragment object instead of growing from our picked atom).
+            self.pymol_cmd("select sele, first %s" % attach_to)
+            cmd = "editor.attach_fragment('sele', 'methane', 1, 0)"
         elif fragment in ["ace", "nme"]:
-            cmd = "editor.attach_amino_acid('%s', '%s')" % (attach_to, fragment)
+            # attach_amino_acid requires the anchor to be the heavy N/C atom
+            # itself (verified against source: "selection & elem N,C" must
+            # resolve to exactly 1 atom), AND that atom must have EXACTLY
+            # ONE open valence for its internal fuse() call to bond the new
+            # fragment into (see pymol-open-source issue #430: a natural
+            # C-terminus needs its OXT removed first to open exactly one
+            # slot - too many or too few open slots both break placement).
+            #
+            # ace attaches via N: a freshly-cut backbone N (lost its bond to
+            # the preceding residue's C) only has its CA bond, i.e. TWO open
+            # valences - add hydrogens then trim to exactly one so only one
+            # slot remains open.
+            #
+            # nme attaches via C: a freshly-cut carbonyl C (lost its bond to
+            # the next residue's N) already has CA + the double-bonded O,
+            # i.e. exactly ONE open valence already - no h_add needed, and
+            # adding one would incorrectly block that slot.
+            if attach_to != "pk1":
+                self.pymol_cmd("select sele, first %s" % attach_to)
+                if fragment == "ace":
+                    self.pymol_cmd("h_add sele")
+                    self.pymol_cmd("select h_sele, (neighbor sele) and elem H")
+                    self.pymol_cmd("select extra_h, h_sele and not (first h_sele)")
+                    self.pymol_cmd("remove extra_h")
+                self.pymol_cmd("edit sele")
+                anchor = "sele"
+            else:
+                # Passing the literal string 'pk1' hits a legacy special
+                # case in attach_amino_acid that always creates a
+                # disconnected standalone object - the function's own source
+                # comment says callers should pass '?pk1' instead.
+                anchor = "?pk1"
+            cmd = "editor.attach_amino_acid('%s', '%s')" % (anchor, fragment)
         else:
             return
 
         self.pymol_cmd(cmd)
         self.pymol_cmd("unpick")
+
+    def clean_selection(self, selection="sele", context_radius=5):
+        """
+        Relax a local region with PyMOL's built-in clean (MMFF94
+        minimization), keeping a shell of surrounding atoms fixed as
+        context. New fragments (ace/nme/methyl caps) are placed using
+        generic template geometry with no awareness of the surrounding 3D
+        structure, so they can land close enough to existing atoms to
+        cause steric clashes (problematic for downstream DFT) - this lets
+        the user clean up specific clashing spots on demand, rather than
+        running a (slow, external-process-spawning) minimization after
+        every single fragment addition.
+        :param selection: pymol selection to clean (expanded to whole
+            residues)
+        :param context_radius: radius (Angstrom) of surrounding atoms to
+            hold fixed during minimization
+        :return:
+        """
+        # Both the cleaned selection and its fixed context must be expanded
+        # to whole residues (byres) - a plain radius cutoff can grab one
+        # atom of a bonded pair while excluding its partner, handing
+        # Mengine a dangling/incomplete fragment it can't parameterize
+        # (observed as "Bond constants missing" / "Clean-Error").
+        self.pymol_cmd("select to_clean, byres (%s)" % selection)
+        self.pymol_cmd(
+            "clean to_clean, byres (model_tmp within %s of to_clean)"
+            % context_radius
+        )
+        self.pymol_cmd("delete to_clean")
 
     def find_unbonded(self, pymol_name, type="nterm", group=None):
         """
@@ -509,6 +606,13 @@ class PymolSession(QObject):
         atoms_to_emit = list(self.atoms_selected)
         self.atoms_selected.clear()
         self.atomsSelectedSignal.emit(atoms_to_emit)
+
+    @pyqtSlot()
+    def return_resn_check(self):
+        unique_residues = sorted(set(self.atoms_selected))
+        resn = getattr(self, "_resn_search_name", "")
+        self.atoms_selected.clear()
+        self.resnSearchSignal.emit(resn, unique_residues)
 
     @pyqtSlot()
     def return_dihedral(self):
