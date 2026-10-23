@@ -75,7 +75,17 @@ class CalcSetupWindowGaussian(QtWidgets.QMainWindow, Ui_SetupWindow):
             self.filepath
         )
 
-        if self.mol_obj.charge:
+        # Check if filetype is xyz (no charge information available)
+        filetype = self.filepath.split(".")[-1].lower()
+        self.is_xyz_file = filetype == "xyz"
+
+        if self.is_xyz_file:
+            self.react.append_text(
+                "WARNING: XYZ files do not contain charge information. "
+                "Please set the charge manually in the setup window."
+            )
+            self.charge = ""
+        elif self.mol_obj.charge:
             self.charge = self.mol_obj.charge
         else:
             self.charge = None
@@ -1146,10 +1156,16 @@ class CalcSetupWindowGaussian(QtWidgets.QMainWindow, Ui_SetupWindow):
 
         ### This part prepares the molecule ###
         if not self.charge:
-            self.react.append_text(
-                "WARNING: No charge is given to the system. Please add a charge in the main window of\
-                                   Calculation setup. Will set it to 0.."
-            )
+            if self.is_xyz_file:
+                self.react.append_text(
+                    "WARNING: XYZ file - no charge information. Please add a charge "
+                    "in the main window of Calculation setup. Will set it to 0.."
+                )
+            else:
+                self.react.append_text(
+                    "WARNING: No charge is given to the system. Please add a charge in the main window of\
+                                       Calculation setup. Will set it to 0.."
+                )
             self.charge = "0"
         if xyz:
             molecule_str = f"{self.charge} {self.multiplicity}\n" + "\n".join(xyz)
@@ -1322,6 +1338,10 @@ class CalcSetupWindowGaussian(QtWidgets.QMainWindow, Ui_SetupWindow):
         self.react.setup_window = None
 
     def handle_overall_charge(self, charge):
+        # Don't auto-fill charge for xyz files - user must set it manually
+        if self.is_xyz_file:
+            return
+
         if self.charge:
             return
 
