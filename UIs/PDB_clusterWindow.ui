@@ -125,15 +125,18 @@
            <widget class="QLineEdit" name="lineEdit_inclusion_radius">
             <property name="maximumSize">
              <size>
-              <width>30</width>
+              <width>40</width>
               <height>16777215</height>
              </size>
+            </property>
+            <property name="toolTip">
+             <string>Type a radius (Å) and press Enter or click away to apply</string>
             </property>
             <property name="dragEnabled">
              <bool>true</bool>
             </property>
             <property name="readOnly">
-             <bool>true</bool>
+             <bool>false</bool>
             </property>
            </widget>
           </item>
@@ -147,10 +150,10 @@
           <item row="0" column="3">
            <widget class="QSlider" name="slider_inclusion_size">
             <property name="maximum">
-             <number>20</number>
+             <number>40</number>
             </property>
             <property name="value">
-             <number>5</number>
+             <number>10</number>
             </property>
             <property name="orientation">
              <enum>Qt::Horizontal</enum>

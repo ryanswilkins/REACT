@@ -63,7 +63,14 @@ class ModelPDB(QtWidgets.QMainWindow):
         self.ui.lineEdit_atoms_in_model.setText("0")
 
         self.ui.slider_inclusion_size.valueChanged.connect(self.update_inclusion_size)
-        self.ui.slider_inclusion_size.setValue(1)
+        # Slider is integer-only (Qt has no fractional QSlider), so its raw
+        # range is double the actual Å range and gets halved everywhere it's
+        # read - gives 0.5 Å increments. setValue(2) here means 1.0 Å,
+        # matching the previous default before this scaling was introduced.
+        self.ui.slider_inclusion_size.setValue(2)
+        self.ui.lineEdit_inclusion_radius.editingFinished.connect(
+            self.update_inclusion_size_from_text
+        )
         self.ui.button_pdb_from_table.clicked.connect(self.import_pdb_project_table)
         self.ui.button_set_cluster_center.clicked.connect(self.set_central_atoms)
         self.ui.button_update_manual_selection.clicked.connect(
@@ -71,6 +78,7 @@ class ModelPDB(QtWidgets.QMainWindow):
         )
         self.ui.button_create_model.clicked.connect(self.create_model)
         self.ui.button_auto_nterm.clicked.connect(self.auto_add_terminals)
+        self.ui.pushButton.clicked.connect(self.add_missing_hydrogens)
         self.ui.button_delete_selected.clicked.connect(self.delete_selected)
         self.ui.button_add_group.clicked.connect(self.build_fragment)
         self.ui.button_clean_selected.clicked.connect(self.clean_selected)
@@ -372,8 +380,10 @@ class ModelPDB(QtWidgets.QMainWindow):
         if self.model_tmp:
             return
 
-        expand_radius = self.ui.slider_inclusion_size.value()
-        self.ui.lineEdit_inclusion_radius.setText(str(expand_radius))
+        # Slider's raw integer value is double the actual Å radius (see
+        # __init__) so it can move in 0.5 Å increments.
+        expand_radius = self.ui.slider_inclusion_size.value() / 2.0
+        self.ui.lineEdit_inclusion_radius.setText("%.1f" % expand_radius)
 
         if self.selected_atoms["central"]:
             self.selected_atoms["included"].clear()
@@ -388,6 +398,29 @@ class ModelPDB(QtWidgets.QMainWindow):
             # Delay this in case user does rapid changes...
             # Restart timer - this automatically cancels any pending timeout
             self.timer.start(500)
+
+    def update_inclusion_size_from_text(self):
+        """
+        Applies a manually-typed radius (Å) from lineEdit_inclusion_radius
+        to the slider, clamped to its range and snapped to the nearest
+        0.5 Å step. Updating the slider re-triggers update_inclusion_size,
+        which re-runs the inclusion-radius expansion.
+        """
+        try:
+            radius = float(self.ui.lineEdit_inclusion_radius.text())
+        except ValueError:
+            radius = self.ui.slider_inclusion_size.value() / 2.0
+
+        slider = self.ui.slider_inclusion_size
+        radius = max(slider.minimum() / 2.0, min(slider.maximum() / 2.0, radius))
+        raw_value = round(radius * 2)
+
+        slider.setValue(raw_value)
+        # setValue above only emits valueChanged (re-running
+        # update_inclusion_size) if raw_value differs from the current
+        # value - set the text explicitly too so clamped/snapped input is
+        # always reflected even when nothing actually changed.
+        self.ui.lineEdit_inclusion_radius.setText("%.1f" % (raw_value / 2.0))
 
     def delayed_get_atoms(self):
         self.timer.stop()
@@ -437,6 +470,15 @@ class ModelPDB(QtWidgets.QMainWindow):
 
     def delete_selected(self):
         self.pymol.pymol_cmd("remove sele and model_tmp")
+        self.pymol.pymol_cmd("count_atoms model_tmp")
+        self.pymol.pymol_cmd("count_atoms model_tmp and not sol.")
+
+    def add_missing_hydrogens(self):
+        """
+        Add any hydrogens missing throughout the model, e.g. for a residue
+        grafted in from a different structure that didn't carry hydrogens.
+        """
+        self.pymol.pymol_cmd("h_add model_tmp")
         self.pymol.pymol_cmd("count_atoms model_tmp")
         self.pymol.pymol_cmd("count_atoms model_tmp and not sol.")
 
