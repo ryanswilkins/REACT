@@ -438,25 +438,42 @@ class PymolSession(QObject):
         """
         Relax a local region with PyMOL's built-in clean (MMFF94
         minimization), keeping a shell of surrounding atoms fixed as
-        context. New fragments (ace/nme/methyl caps) are placed using
-        generic template geometry with no awareness of the surrounding 3D
+        context. New fragments (ace/nme caps) are placed using generic
+        template geometry with no awareness of the surrounding 3D
         structure, so they can land close enough to existing atoms to
         cause steric clashes (problematic for downstream DFT) - this lets
         the user clean up specific clashing spots on demand, rather than
         running a (slow, external-process-spawning) minimization after
         every single fragment addition.
-        :param selection: pymol selection to clean (expanded to whole
-            residues)
+
+        What's actually allowed to MOVE is restricted to atoms named
+        resn ACE/NME - PyMOL's fragment library loads capping groups
+        under these standard PDB chemical-component names, so this never
+        touches a real, pre-existing protein residue regardless of how
+        broadly `selection` is drawn. With the rest of the protein cut
+        away, letting an existing residue move freely during minimization
+        (no steric/electrostatic restraint from the missing bulk of the
+        protein) can let catalytically important groups drift or flip out
+        of position entirely - the surrounding shell is still included as
+        fixed context so Mengine has a realistic local environment to
+        minimize against, it just can't move.
+
+        Note: methyl caps (resn for PyMOL's "methane" fragment isn't
+        confirmed) aren't covered by this restriction yet - cleaning a
+        methyl cap will currently select nothing and no-op rather than
+        move the wrong atoms.
+        :param selection: pymol selection identifying which cap to clean
+            (only its resn ACE/NME atoms will actually move)
         :param context_radius: radius (Angstrom) of surrounding atoms to
             hold fixed during minimization
         :return:
         """
-        # Both the cleaned selection and its fixed context must be expanded
-        # to whole residues (byres) - a plain radius cutoff can grab one
-        # atom of a bonded pair while excluding its partner, handing
-        # Mengine a dangling/incomplete fragment it can't parameterize
-        # (observed as "Bond constants missing" / "Clean-Error").
-        self.pymol_cmd("select to_clean, byres (%s)" % selection)
+        # byres avoids handing Mengine a dangling/incomplete fragment (a
+        # plain radius cutoff can grab one atom of a bonded pair while
+        # excluding its partner - observed as "Bond constants missing" /
+        # "Clean-Error"); the resn ACE+NME intersection then drops anything
+        # byres pulled in that isn't actually part of a capping group.
+        self.pymol_cmd("select to_clean, byres (%s) and resn ACE+NME" % selection)
         self.pymol_cmd(
             "clean to_clean, byres (model_tmp within %s of to_clean)"
             % context_radius
