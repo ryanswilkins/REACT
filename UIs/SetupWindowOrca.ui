@@ -810,13 +810,20 @@ QComboBox QAbstractItemView::item:hover {
               <item>
                <widget class="QLineEdit" name="lineEdit_solvent"/>
               </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_solvation2">
               <item>
                <widget class="QCheckBox" name="checkbox_eps">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
+                <property name="toolTip">
+                 <string>Define a custom solvent by dielectric constant and refractive index instead of a predefined name (CPCM only)</string>
+                </property>
                 <property name="text">
-                 <string>Eps:</string>
+                 <string>Custom solvent - Eps:</string>
                 </property>
                </widget>
               </item>
@@ -832,6 +839,84 @@ QComboBox QAbstractItemView::item:hover {
                  </size>
                 </property>
                </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="label_17">
+                <property name="font">
+                 <font>
+                  <pointsize>13</pointsize>
+                 </font>
+                </property>
+                <property name="text">
+                 <string>Refrac:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="lineEdit_refrac">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>50</width>
+                  <height>16777215</height>
+                 </size>
+                </property>
+                <property name="toolTip">
+                 <string>Refractive index for the custom solvent (used with Eps - CPCM pairs this with epsilon for any solvent not in ORCA's predefined list)</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_solvation2">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_solvation3">
+              <item>
+               <widget class="QCheckBox" name="checkbox_draco">
+                <property name="toolTip">
+                 <string>Environment-adaptive (DRACO) atomic radii - recommended for charged solutes in water, acetonitrile, DMSO or methanol. Single-point energies only (no analytic gradient).</string>
+                </property>
+                <property name="text">
+                 <string>DRACO (adaptive radii)</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="checkbox_cds">
+                <property name="toolTip">
+                 <string>Since ORCA 6, plain CPCM no longer adds the cavity/dispersion (cav+disp) free-energy term by default - check this to add it back (cds_cpcm 2). Not applicable to SMD, which reports its own separate CDS term.</string>
+                </property>
+                <property name="text">
+                 <string>Include cavity/dispersion term (CPCM only)</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_solvation3">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
               </item>
              </layout>
             </item>

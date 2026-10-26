@@ -107,7 +107,7 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         self.blocks_available = copy.deepcopy(
             self.settings._orca_settings.get("blocks_available", {})
         )
-        self.solvents = ["CPM", "SMD"]
+        self.solvents = ["CPCM", "SMD"]
 
         self.opt_freq_details = {"checked": False, "keywords": []}
         self.num_files = 1
@@ -198,6 +198,7 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         )
 
         self.ui.checkbox_eps.stateChanged.connect(self.update_eps)
+        self.ui.comboBox_SCRF.currentTextChanged.connect(self.update_solvation_method)
 
         # Keep track of atoms selected (for multiple selection options)
         self.selected_indexes = list()
@@ -255,10 +256,30 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         self.add_move_atoms()
 
     def update_eps(self):
-        if self.ui.checkbox_eps.isChecked():
-            self.ui.lineEdit_eps.setEnabled(True)
-        else:
-            self.ui.lineEdit_eps.setEnabled(False)
+        enabled = self.ui.checkbox_eps.isChecked()
+        self.ui.lineEdit_eps.setEnabled(enabled)
+        self.ui.lineEdit_refrac.setEnabled(enabled)
+
+    def update_solvation_method(self):
+        """
+        Custom epsilon/refractive index and the cds_cpcm cavity/dispersion
+        term are CPCM-specific (see ORCA 6 manual) - SMD uses its own,
+        separate solvent-parameter library and reports its own CDS term.
+        Disable (and uncheck, rather than leaving a stale checked-but-
+        disabled state that would still affect the generated input) these
+        controls whenever SMD is selected.
+        """
+        is_cpcm = self.ui.comboBox_SCRF.currentText() == "CPCM"
+
+        if not is_cpcm:
+            self.ui.checkbox_eps.setChecked(False)
+            self.ui.checkbox_cds.setChecked(False)
+
+        self.ui.checkbox_eps.setEnabled(is_cpcm)
+        self.ui.checkbox_cds.setEnabled(is_cpcm)
+        # lineEdit_eps/lineEdit_refrac stay governed by checkbox_eps (via
+        # update_eps) - checkbox_eps being unchecked above already disables
+        # them when switching away from CPCM.
 
     def change_selection_mode(self):
         if self.ui.comboBox_freezetype.currentText() == "Atoms":
@@ -838,6 +859,10 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         self.ui.comboBox_SCRF.addItems(self.solvents)
         self.ui.checkbox_eps.setChecked(False)
         self.ui.lineEdit_eps.setEnabled(False)
+        self.ui.lineEdit_refrac.setEnabled(False)
+        self.ui.checkbox_draco.setChecked(False)
+        self.ui.checkbox_cds.setChecked(False)
+        self.update_solvation_method()
 
         self.update_job_details()
 
@@ -992,15 +1017,35 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         if self.ui.checkbox_SCRF.isChecked():
             scrf_method = self.ui.comboBox_SCRF.currentText()
             solvent = self.ui.lineEdit_solvent.text()
+            # Custom epsilon/refrac and cds_cpcm are CPCM-specific (ORCA 6
+            # manual) - SMD uses its own solvent-parameter library and
+            # reports its own, separate CDS term. The UI already disables
+            # these controls for SMD; this guard is just defensive.
+            is_cpcm = scrf_method == "CPCM"
 
-            if self.ui.checkbox_eps.isChecked():
-                blocks_str += f"\n%cpcm\n  epsilon {self.ui.lineEdit_eps.text()}\nEND\n"
+            cpcm_block_lines = []
+
+            if is_cpcm and self.ui.checkbox_eps.isChecked():
+                cpcm_block_lines.append(f"  epsilon {self.ui.lineEdit_eps.text()}")
+                cpcm_block_lines.append(f"  refrac {self.ui.lineEdit_refrac.text()}")
                 solvent = None
+
+            if is_cpcm and self.ui.checkbox_cds.isChecked():
+                # Since ORCA 6, plain CPCM no longer adds the cavity/
+                # dispersion (cav+disp) free-energy term by default -
+                # cds_cpcm 2 restores it (ORCA 6 manual, solvationmodels).
+                cpcm_block_lines.append("  cds_cpcm 2")
+
+            if cpcm_block_lines:
+                blocks_str += "\n%cpcm\n" + "\n".join(cpcm_block_lines) + "\nEND\n"
 
             if solvent:
                 job_keywords.append(f"{scrf_method}({solvent})")
             else:
                 job_keywords.append(f"{scrf_method}")
+
+            if self.ui.checkbox_draco.isChecked():
+                job_keywords.append("DRACO")
 
         # Build simple input line
         # Composite methods don't need basis set specification

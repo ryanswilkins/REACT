@@ -384,16 +384,47 @@ class Ui_SetupWindow(object):
         self.lineEdit_solvent = QtWidgets.QLineEdit(self.scrollAreaWidgetContents_2)
         self.lineEdit_solvent.setObjectName("lineEdit_solvent")
         self.horizontalLayout_13.addWidget(self.lineEdit_solvent)
+        self.verticalLayout_4.addLayout(self.horizontalLayout_13)
+        self.horizontalLayout_solvation2 = QtWidgets.QHBoxLayout()
+        self.horizontalLayout_solvation2.setObjectName("horizontalLayout_solvation2")
         self.checkbox_eps = QtWidgets.QCheckBox(self.scrollAreaWidgetContents_2)
         self.checkbox_eps.setEnabled(True)
         self.checkbox_eps.setObjectName("checkbox_eps")
-        self.horizontalLayout_13.addWidget(self.checkbox_eps)
+        self.horizontalLayout_solvation2.addWidget(self.checkbox_eps)
         self.lineEdit_eps = QtWidgets.QLineEdit(self.scrollAreaWidgetContents_2)
         self.lineEdit_eps.setEnabled(False)
         self.lineEdit_eps.setMaximumSize(QtCore.QSize(50, 16777215))
         self.lineEdit_eps.setObjectName("lineEdit_eps")
-        self.horizontalLayout_13.addWidget(self.lineEdit_eps)
-        self.verticalLayout_4.addLayout(self.horizontalLayout_13)
+        self.horizontalLayout_solvation2.addWidget(self.lineEdit_eps)
+        self.label_17 = QtWidgets.QLabel(self.scrollAreaWidgetContents_2)
+        font = QtGui.QFont()
+        font.setPointSize(13)
+        self.label_17.setFont(font)
+        self.label_17.setObjectName("label_17")
+        self.horizontalLayout_solvation2.addWidget(self.label_17)
+        self.lineEdit_refrac = QtWidgets.QLineEdit(self.scrollAreaWidgetContents_2)
+        self.lineEdit_refrac.setEnabled(False)
+        self.lineEdit_refrac.setMaximumSize(QtCore.QSize(50, 16777215))
+        self.lineEdit_refrac.setObjectName("lineEdit_refrac")
+        self.horizontalLayout_solvation2.addWidget(self.lineEdit_refrac)
+        spacerItem_solvation2 = QtWidgets.QSpacerItem(
+            40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum
+        )
+        self.horizontalLayout_solvation2.addItem(spacerItem_solvation2)
+        self.verticalLayout_4.addLayout(self.horizontalLayout_solvation2)
+        self.horizontalLayout_solvation3 = QtWidgets.QHBoxLayout()
+        self.horizontalLayout_solvation3.setObjectName("horizontalLayout_solvation3")
+        self.checkbox_draco = QtWidgets.QCheckBox(self.scrollAreaWidgetContents_2)
+        self.checkbox_draco.setObjectName("checkbox_draco")
+        self.horizontalLayout_solvation3.addWidget(self.checkbox_draco)
+        self.checkbox_cds = QtWidgets.QCheckBox(self.scrollAreaWidgetContents_2)
+        self.checkbox_cds.setObjectName("checkbox_cds")
+        self.horizontalLayout_solvation3.addWidget(self.checkbox_cds)
+        spacerItem_solvation3 = QtWidgets.QSpacerItem(
+            40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum
+        )
+        self.horizontalLayout_solvation3.addItem(spacerItem_solvation3)
+        self.verticalLayout_4.addLayout(self.horizontalLayout_solvation3)
         self.scrollArea.setWidget(self.scrollAreaWidgetContents_2)
         self.gridLayout_14.addWidget(self.scrollArea, 0, 0, 1, 1)
         self.tabWidget.addTab(self.tab_main, "")
@@ -965,7 +996,44 @@ class Ui_SetupWindow(object):
         self.checkbox_SCRF.setText(_translate("SetupWindow", "Continuum solvation"))
         self.label_15.setText(_translate("SetupWindow", "Method:"))
         self.label_16.setText(_translate("SetupWindow", "Solvent:"))
-        self.checkbox_eps.setText(_translate("SetupWindow", "Eps:"))
+        self.checkbox_eps.setToolTip(
+            _translate(
+                "SetupWindow",
+                "Define a custom solvent by dielectric constant and "
+                "refractive index instead of a predefined name (CPCM only)",
+            )
+        )
+        self.checkbox_eps.setText(_translate("SetupWindow", "Custom solvent - Eps:"))
+        self.label_17.setText(_translate("SetupWindow", "Refrac:"))
+        self.lineEdit_refrac.setToolTip(
+            _translate(
+                "SetupWindow",
+                "Refractive index for the custom solvent (used with Eps - CPCM "
+                "pairs this with epsilon for any solvent not in ORCA's "
+                "predefined list)",
+            )
+        )
+        self.checkbox_draco.setToolTip(
+            _translate(
+                "SetupWindow",
+                "Environment-adaptive (DRACO) atomic radii - recommended for "
+                "charged solutes in water, acetonitrile, DMSO or methanol. "
+                "Single-point energies only (no analytic gradient).",
+            )
+        )
+        self.checkbox_draco.setText(_translate("SetupWindow", "DRACO (adaptive radii)"))
+        self.checkbox_cds.setToolTip(
+            _translate(
+                "SetupWindow",
+                "Since ORCA 6, plain CPCM no longer adds the cavity/dispersion "
+                "(cav+disp) free-energy term by default - check this to add it "
+                "back (cds_cpcm 2). Not applicable to SMD, which reports its "
+                "own separate CDS term.",
+            )
+        )
+        self.checkbox_cds.setText(
+            _translate("SetupWindow", "Include cavity/dispersion term (CPCM only)")
+        )
         self.tabWidget.setTabText(
             self.tabWidget.indexOf(self.tab_main), _translate("SetupWindow", "Main")
         )
