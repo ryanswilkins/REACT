@@ -627,17 +627,11 @@ QComboBox QAbstractItemView::item:hover {
                </widget>
               </item>
               <item>
-               <widget class="QLineEdit" name="LineEdit_add_job">
-                <property name="minimumSize">
-                 <size>
-                  <width>100</width>
-                  <height>21</height>
-                 </size>
-                </property>
+               <widget class="QLabel" name="label_block_preview">
                 <property name="maximumSize">
                  <size>
-                  <width>500</width>
-                  <height>21</height>
+                  <width>16777215</width>
+                  <height>50</height>
                  </size>
                 </property>
                 <property name="font">
@@ -646,10 +640,32 @@ QComboBox QAbstractItemView::item:hover {
                  </font>
                 </property>
                 <property name="text">
-                 <string/>
+                 <string>Common keywords:</string>
                 </property>
-                <property name="placeholderText">
-                 <string>Write block content here ...</string>
+                <property name="alignment">
+                 <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QTextEdit" name="textEdit_block_preview">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>16777215</width>
+                  <height>80</height>
+                 </size>
+                </property>
+                <property name="toolTip">
+                 <string>Example/common keywords for the selected block. Click Add to add this as a new block below, with this content pre-filled - then edit it directly in the list to adjust it.</string>
+                </property>
+                <property name="readOnly">
+                 <bool>true</bool>
                 </property>
                </widget>
               </item>
@@ -667,6 +683,9 @@ QComboBox QAbstractItemView::item:hover {
                   <height>16777215</height>
                  </size>
                 </property>
+                <property name="toolTip">
+                 <string>Add the block above (with its preview content) to the list below - you can then edit it directly there</string>
+                </property>
                 <property name="text">
                  <string>Add</string>
                 </property>
@@ -683,6 +702,9 @@ QComboBox QAbstractItemView::item:hover {
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
+                </property>
+                <property name="toolTip">
+                 <string>Double-click a block to edit its content directly (including its %name line to rename it)</string>
                 </property>
                 <property name="minimumSize">
                  <size>

@@ -21,11 +21,114 @@ from os import path, mkdir, remove
 import glob
 import shutil
 from PyQt5 import QtWidgets
-from PyQt5.QtCore import pyqtSlot, QTimer
+from PyQt5.QtCore import pyqtSlot, QTimer, Qt
 from UIs.SetupWindowOrca import Ui_SetupWindow
 from mods.ScanBond import AtomBond
 from mods.common_functions import atom_distance, random_color, write_file
 import copy
+
+# Short, read-only example content shown in the %Block preview panel when a
+# block type is selected (see update_block_preview) - the inner content only
+# (what goes between "%blockname" and "end"), for reference, not inserted
+# automatically. Populated with real ORCA manual syntax where verified;
+# deliberately left out of this dict (falling back to the generic "see the
+# ORCA manual" message in update_block_preview) for anything not confirmed
+# against the manual.
+# ("mrcc" and "casresp" are intentionally omitted - verified keyword names
+# exist for casresp, but not a confirmed complete/mandatory combination;
+# mrcc's syntax couldn't be confirmed at all.)
+BLOCK_KEYWORD_PREVIEWS = {
+    "autoci": "citype FIC-MRCI\n"
+    "# requires a preceding %casscf block (nel/norb/mult/nroots)",
+    "basis": 'Basis "def2-TZVP"       # orbital basis\n'
+    'AuxJ  "def2/J"          # RI-J auxiliary basis\n'
+    'AuxC  "def2-TZVP/C"     # auxiliary basis for correlated methods',
+    "casscf": "nel  10   # active-space electrons\n"
+    "norb  8   # active-space orbitals\n"
+    "mult  1   # multiplicity",
+    "cim": "CIMTHRESH 0.0005   # default is 0.001",
+    "cis": "NRoots 10\nTriplets true",
+    "coords": "CTyp xyz\nCharge 0\nMult 1\ncoords\n"
+    "  O   0.000   0.000   0.000\n"
+    "  H   0.000   0.000   0.960\n"
+    "  H   0.927   0.000  -0.240\n"
+    "end",
+    "compound": "New_Step\n! B3LYP def2-SVP Opt\n* xyzfile 0 1 start.xyz\n"
+    "Step_End\nEndRun",
+    "cosmors": 'solvent "Water"   # picks a built-in COSMO-RS solvent',
+    "cpcm": "surfacetype gepol_ses_gaussian   # vdw_gaussian (default), gepol_ses, "
+    "gepol_sas, gepol_ses_gaussian\n"
+    "radius[8]   1.3                  # custom atomic radius (A) for element "
+    "8 (oxygen)\n"
+    "# epsilon/refrac/smd/draco/cds_cpcm are already handled by the "
+    "Continuum solvation controls above",
+    "elprop": "Dipole true\nPolar true",
+    "eprnmr": "gtensor true\nNuclei = all H { aiso, adip }",
+    "esd": 'GSHESSIAN "mymol.hess"\nHESSFLAG VG',
+    "freq": "Temp      298.15   # temperature (K) for thermochemistry\n"
+    "Increment 0.005    # numerical displacement step (bohr), if NumFreq",
+    "geom": "Constraints\n"
+    "  { C 0 C }      # freeze atom 0 at its current Cartesian position\n"
+    "end",
+    "ice": "nel     8       # active electrons\n"
+    "norb    23      # active orbitals\n"
+    "nroots  1\n"
+    "mult    1\n"
+    "tgen    1e-04   # generator threshold",
+    "irc": "MaxIter    20\nDirection  both\nInitHess   read",
+    "loc": "LocMet PM   # Pipek-Mezey localization",
+    "mcrpa": "NRoots 8   # number of excited states\n"
+    "# requires a preceding ground-state %casscf block (nroots 1)",
+    "md": "Timestep    0.5_fs\n"
+    "Initvel     300_K\n"
+    "Thermostat  NHC 300_K Timecon 10.0_fs\n"
+    "Run         100",
+    "mdci": "citype  CCSD\nTriples 1          # add perturbative (T) correction",
+    "method": "RI on   # use the RI-J approximation",
+    "mp2": "RI       true\n"
+    "EMin     -1.5     # orbital energy cutoff defining the frozen core (Eh)\n"
+    "Density  relaxed  # relaxed density, needed for properties/gradients",
+    "mrci": "CIType       SORCI\n"
+    "NewBlock 1 0        # multiplicity 1, irrep 0\n"
+    "  NRoots 1\n"
+    "  Excitations cisd\n"
+    "  Refs CAS(2,2) end\n"
+    "end",
+    "nbo": 'NBOKEYLIST = "$NBO NBO NPA AONBO=C ARCHIVE $END"   '
+    "# requires NBOEXE env var",
+    "neb": 'NEB_END_XYZFILE  "<change to product>.xyz"   # mandatory - end-point structure\n'
+    'NEB_TS_XYZFILE "<change to TS guess>.xyz" #optional - if you have a TS guess\n'
+    "NImages  8",
+    "numgrad": "CentralDiff true   # two-sided differentiation\n"
+    "DX          0.005   # displacement increment (bohr)",
+    "output": "PrintLevel      Normal\n"
+    "Print[ P_OrbEn ] 2   # 2 = print all orbital energies",
+    "pal": "nprocs 8   # number of parallel cores",
+    "paras": "R=1.05,1.13,8   # scan variable: start, end, number of steps\n"
+    "# reference in the coordinate block as e.g. N 0 0 {R}",
+    "plots": "dim1 45\ndim2 45\ndim3 45\nFormat Cube\n"
+    'MO("orbital.cube",4,0);   # plot MO index 4',
+    "rel": "method   ZORA   # DKH, ZORA, IORA, IORAmm, X2C\nModelPot 1,1,1,1",
+    "rocis": "NRoots 6\nEWin = -5,5,-5,5   # donor/acceptor orbital energy window",
+    "rr": "states 1,2,3,4,5\n"
+    'HessName "ground_state.hess"\n'
+    "ASAInput True\n"
+    "# legacy module - the newer %esd block is recommended for new work",
+    "scf": "MaxIter 500   # raise SCF iteration cap\n"
+    "Guess   HCore   # HCore, Hueckel, PAtom, PModel, MORead",
+    "symmetry": "SymThresh 0.01   # loosen point-group detection tolerance",
+}
+
+
+def format_block_display(block_name, content):
+    """
+    Build the %blockname/END-wrapped text shown for a block in
+    List_add_job. No indentation is added (unlike the old display format)
+    so the block name (first line) and END (last line) can be reliably
+    stripped back off again when the user edits the item in place - see
+    CalcSetupWindowORCA.on_block_item_edited.
+    """
+    return "%%%s\n%s\nEND" % (block_name, content)
 
 
 class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
@@ -122,14 +225,8 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         self.insert_model_atoms()
         self.fill_main_tab()
 
-        self.ui.Button_add_job.clicked.connect(
-            lambda: self.add_item_to_list(
-                self.ui.LineEdit_add_job,
-                self.ui.List_add_job,
-                self.blocks,
-                self.ui.comboBox.currentText(),
-            )
-        )
+        self.ui.Button_add_job.clicked.connect(self.add_block)
+        self.ui.List_add_job.itemChanged.connect(self.on_block_item_edited)
         self.ui.Button_del_job.clicked.connect(
             lambda: self.del_item_from_list(
                 self.ui.List_add_job, self.job_options[self.job_type]
@@ -199,6 +296,7 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
 
         self.ui.checkbox_eps.stateChanged.connect(self.update_eps)
         self.ui.comboBox_SCRF.currentTextChanged.connect(self.update_solvation_method)
+        self.ui.comboBox.currentTextChanged.connect(self.update_block_preview)
 
         # Keep track of atoms selected (for multiple selection options)
         self.selected_indexes = list()
@@ -280,6 +378,108 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         # lineEdit_eps/lineEdit_refrac stay governed by checkbox_eps (via
         # update_eps) - checkbox_eps being unchecked above already disables
         # them when switching away from CPCM.
+
+    def update_block_preview(self):
+        """
+        Show a short, read-only example of the selected %block's most
+        common/mandatory keywords, so the user has something concrete to
+        start from rather than needing to already know ORCA's block
+        syntax. Purely informational on its own - clicking Add (see
+        add_block) is what actually copies this into a new, directly
+        editable entry in List_add_job.
+        """
+        block_name = self.ui.comboBox.currentText()
+        preview = BLOCK_KEYWORD_PREVIEWS.get(
+            block_name,
+            "No keyword preview available for this block - see the ORCA "
+            "manual, %%%s section." % block_name,
+        )
+        self.ui.textEdit_block_preview.setPlainText(preview)
+
+    def populate_block_list(self):
+        """
+        (Re)populate List_add_job from self.blocks with directly-editable
+        items (see add_block/on_block_item_edited) - shared by
+        fill_main_tab (initial load) and update_job_details (which clears
+        and rebuilds the list on every job-type change).
+        """
+        self.ui.List_add_job.clear()
+        for block_name, block_content in self.blocks.items():
+            item = QtWidgets.QListWidgetItem(
+                format_block_display(block_name, block_content)
+            )
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
+            item.setData(Qt.UserRole, block_name)
+            self.ui.List_add_job.addItem(item)
+
+    def add_block(self):
+        """
+        Add the currently-selected block type to List_add_job, seeded with
+        its common-keywords preview content (blank if no verified preview
+        exists - see BLOCK_KEYWORD_PREVIEWS) rather than the generic
+        "no preview available" message, which isn't real ORCA syntax and
+        shouldn't be inserted as if it were. The resulting list item is
+        directly editable in place (see on_block_item_edited) so the user
+        adjusts it there instead of via a separate input field.
+        If this block type is already in the list, update that entry in
+        place instead of adding a duplicate.
+        """
+        block_name = self.ui.comboBox.currentText()
+        if not block_name:
+            return
+
+        content = BLOCK_KEYWORD_PREVIEWS.get(block_name, "")
+        self.blocks[block_name] = content
+        display_text = format_block_display(block_name, content)
+
+        for i in range(self.ui.List_add_job.count()):
+            item = self.ui.List_add_job.item(i)
+            if item.data(Qt.UserRole) == block_name:
+                item.setText(display_text)
+                return
+
+        item = QtWidgets.QListWidgetItem(display_text)
+        item.setFlags(item.flags() | Qt.ItemIsEditable)
+        item.setData(Qt.UserRole, block_name)
+        self.ui.List_add_job.addItem(item)
+
+    def on_block_item_edited(self, item):
+        """
+        Keep self.blocks in sync when the user edits a block's entry in
+        List_add_job directly, including renaming it by editing its
+        "%blockname" first line. The block name is re-parsed from the
+        edited text (rather than trusting the item's stored UserRole,
+        which only tracks what it was before this edit) so a rename is
+        picked up correctly; the stored UserRole is then refreshed to the
+        new name for the next edit.
+        """
+        lines = item.text().split("\n")
+        while lines and lines[-1] == "":
+            lines.pop()
+
+        if not lines or not lines[0].startswith("%"):
+            # Malformed (user deleted the %blockname line) - leave
+            # self.blocks alone rather than guess what they meant.
+            return
+
+        new_block_name = lines[0][1:].strip()
+        if not new_block_name:
+            return
+
+        if lines[-1].strip().upper() == "END":
+            content = "\n".join(lines[1:-1])
+        else:
+            # User deleted the END line - keep the rest as content anyway,
+            # format_block_display will add a fresh END back when this
+            # block is next displayed/regenerated.
+            content = "\n".join(lines[1:])
+
+        old_block_name = item.data(Qt.UserRole)
+        if old_block_name and old_block_name != new_block_name:
+            self.blocks.pop(old_block_name, None)
+
+        self.blocks[new_block_name] = content
+        item.setData(Qt.UserRole, new_block_name)
 
     def change_selection_mode(self):
         if self.ui.comboBox_freezetype.currentText() == "Atoms":
@@ -780,16 +980,10 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         else:
             self.ui.checkbox_freq.setHidden(False)
 
-        self.ui.List_add_job.clear()
         self.ui.List_add_job_2.clear()
 
         self.ui.List_add_job_2.addItems(self.job_options[self.job_type])
-        self.ui.List_add_job.addItems(
-            [
-                f"%{block_name}\n    {block_content}\nEND\n"
-                for block_name, block_content in self.blocks.items()
-            ]
-        )
+        self.populate_block_list()
 
         # Automatically select 'neb' block for NEB-TS job type
         if self.job_type == "NEB-TS":
@@ -839,15 +1033,11 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
         self.ui.comboBox_basis1.addItems(basis_options)
 
         self.ui.comboBox_job_type.addItems(self.job_options)
-        self.ui.List_add_job.addItems(
-            [
-                f"%{block_name}\n  {block_content}\nEND\n"
-                for block_name, block_content in self.blocks.items()
-            ]
-        )
+        self.populate_block_list()
         self.ui.ComboBox_files.addItem(self.filename)
 
         self.ui.comboBox.addItems([x for x in self.blocks_available.keys()])
+        self.update_block_preview()
 
         self.ui.comboBox_job_type.setCurrentText(self.settings.job_type)
         self.ui.comboBox_funct.setCurrentText(self.functional)
@@ -1225,39 +1415,25 @@ class CalcSetupWindowORCA(QtWidgets.QMainWindow, Ui_SetupWindow):
                             if self.pymol:
                                 self.pymol_spheres(atom_nr)
 
-    def add_item_to_list(self, Qtextinput, Qlist, job_list, block=False):
+    def add_item_to_list(self, Qtextinput, Qlist, job_list):
         """
         :param Qtextinput: QLineEdit
         :param Qlist: QListWidget
-        :param job_list: list or dict to store item (dict for blocks, list for others)
-        :param block: block name if adding a block, False otherwise
+        :param job_list: list to store item
         Adds the text input from user (past to Qtextinput) to correct
         QlistWidget and append item to list.
+        (%Block entries are handled separately - see add_block/
+        on_block_item_edited - since they're keyed by block name in a
+        dict rather than appended to a plain list.)
         """
         user_input = Qtextinput.text()
 
         if not user_input:
             return
 
-        if block:
-            # For blocks: store raw content in dict, display formatted version in UI
-            if block not in self.blocks or self.blocks[block] != user_input:
-                self.blocks[block] = user_input
-                display_text = f"%{block}\n    {user_input}\nEND\n"
-
-                # Check if this block is already in the list, if so update it
-                for i in range(Qlist.count()):
-                    item_text = Qlist.item(i).text()
-                    if item_text.startswith(f"%{block}\n"):
-                        Qlist.takeItem(i)
-                        break
-
-                Qlist.addItem(display_text)
-        else:
-            # For regular lists (not blocks)
-            if user_input not in job_list:
-                job_list.append(user_input)
-                Qlist.addItem(user_input)
+        if user_input not in job_list:
+            job_list.append(user_input)
+            Qlist.addItem(user_input)
 
         Qtextinput.clear()
 

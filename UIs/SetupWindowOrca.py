@@ -300,15 +300,30 @@ class Ui_SetupWindow(object):
         self.comboBox.setMaximumSize(QtCore.QSize(120, 16777215))
         self.comboBox.setObjectName("comboBox")
         self.horizontalLayout_18.addWidget(self.comboBox)
-        self.LineEdit_add_job = QtWidgets.QLineEdit(self.scrollAreaWidgetContents_2)
-        self.LineEdit_add_job.setMinimumSize(QtCore.QSize(100, 21))
-        self.LineEdit_add_job.setMaximumSize(QtCore.QSize(500, 21))
+        self.label_block_preview = QtWidgets.QLabel(self.scrollAreaWidgetContents_2)
+        self.label_block_preview.setMaximumSize(QtCore.QSize(16777215, 50))
         font = QtGui.QFont()
         font.setItalic(True)
-        self.LineEdit_add_job.setFont(font)
-        self.LineEdit_add_job.setText("")
-        self.LineEdit_add_job.setObjectName("LineEdit_add_job")
-        self.horizontalLayout_18.addWidget(self.LineEdit_add_job)
+        self.label_block_preview.setFont(font)
+        self.label_block_preview.setAlignment(
+            QtCore.Qt.AlignLeading | QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop
+        )
+        self.label_block_preview.setObjectName("label_block_preview")
+        self.horizontalLayout_18.addWidget(self.label_block_preview)
+        self.textEdit_block_preview = QtWidgets.QTextEdit(self.scrollAreaWidgetContents_2)
+        sizePolicy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        )
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(
+            self.textEdit_block_preview.sizePolicy().hasHeightForWidth()
+        )
+        self.textEdit_block_preview.setSizePolicy(sizePolicy)
+        self.textEdit_block_preview.setMaximumSize(QtCore.QSize(16777215, 80))
+        self.textEdit_block_preview.setReadOnly(True)
+        self.textEdit_block_preview.setObjectName("textEdit_block_preview")
+        self.horizontalLayout_18.addWidget(self.textEdit_block_preview)
         self.Button_add_job = QtWidgets.QPushButton(self.scrollAreaWidgetContents_2)
         self.Button_add_job.setMinimumSize(QtCore.QSize(130, 0))
         self.Button_add_job.setMaximumSize(QtCore.QSize(130, 16777215))
@@ -988,10 +1003,31 @@ class Ui_SetupWindow(object):
         self.Button_add_job_2.setText(_translate("SetupWindow", "Add"))
         self.Button_del_job_2.setText(_translate("SetupWindow", "Remove selected"))
         self.additional_job.setText(_translate("SetupWindow", "% Block:"))
-        self.LineEdit_add_job.setPlaceholderText(
-            _translate("SetupWindow", "Write block content here ...")
+        self.label_block_preview.setText(_translate("SetupWindow", "Common keywords:"))
+        self.textEdit_block_preview.setToolTip(
+            _translate(
+                "SetupWindow",
+                "Example/common keywords for the selected block. Click Add "
+                "to add this as a new block below, with this content "
+                "pre-filled - then edit it directly in the list to adjust "
+                "it.",
+            )
+        )
+        self.Button_add_job.setToolTip(
+            _translate(
+                "SetupWindow",
+                "Add the block above (with its preview content) to the "
+                "list below - you can then edit it directly there",
+            )
         )
         self.Button_add_job.setText(_translate("SetupWindow", "Add"))
+        self.List_add_job.setToolTip(
+            _translate(
+                "SetupWindow",
+                "Double-click a block to edit its content directly "
+                "(including its %name line to rename it)",
+            )
+        )
         self.Button_del_job.setText(_translate("SetupWindow", "Remove selected"))
         self.checkbox_SCRF.setText(_translate("SetupWindow", "Continuum solvation"))
         self.label_15.setText(_translate("SetupWindow", "Method:"))
