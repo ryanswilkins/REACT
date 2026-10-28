@@ -12,6 +12,11 @@ class PymolSession(QObject):
     importSavedPDB = pyqtSignal(str)
     # (resn searched, list of unique residue keys matched)
     resnSearchSignal = pyqtSignal(str, list)
+    # Bookkeeping-only refresh of the "included" selection's atom IDs after
+    # an automatic radius expansion (expand_sele) - unlike
+    # atomsSelectedSignal, this must NOT be treated as a new manual atom
+    # pick (see return_included_sync).
+    includedSyncSignal = pyqtSignal(list)
     # atomClickedSignal = pyqtSignal(list)
     overallChargeSignal = pyqtSignal(str)
     # Signal for text messages to avoid cross-thread GUI calls
@@ -70,6 +75,12 @@ class PymolSession(QObject):
                 "process": self.collect_iterate,
                 "return": "iterated",
                 "signal": self.return_sel_atomnr,
+            },
+            "iterate included, int(ID)": {
+                "collect": False,
+                "process": self.collect_iterate,
+                "return": "iterated",
+                "signal": self.return_included_sync,
             },
             "iterate nterm": {
                 "collect": False,
@@ -338,6 +349,19 @@ class PymolSession(QObject):
         """
         self.pymol_cmd("iterate %s, %s" % (sele, type))
 
+    def sync_included_atoms(self, sele="included"):
+        """
+        Read back the atom IDs currently in `sele` for Python-side
+        bookkeeping only (routes through includedSyncSignal, not
+        atomsSelectedSignal) - does not rebuild any PyMOL selection.
+        Used after an automatic radius expansion (expand_sele), where the
+        "included" selection has already been built correctly and should
+        not be redundantly (and fragilely) rebuilt via set_selection.
+        :param sele: name of the pymol selection to read back
+        :return:
+        """
+        self.pymol_cmd("iterate %s, int(ID)" % sele)
+
     def select_by_resn(self, resn, sele_name="sele"):
         """
         Select atoms matching a residue name and check how many distinct
@@ -395,39 +419,101 @@ class PymolSession(QObject):
             self.pymol_cmd("select sele, first %s" % attach_to)
             cmd = "editor.attach_fragment('sele', 'methane', 1, 0)"
         elif fragment in ["ace", "nme"]:
-            # attach_amino_acid requires the anchor to be the heavy N/C atom
-            # itself (verified against source: "selection & elem N,C" must
-            # resolve to exactly 1 atom), AND that atom must have EXACTLY
-            # ONE open valence for its internal fuse() call to bond the new
-            # fragment into (see pymol-open-source issue #430: a natural
-            # C-terminus needs its OXT removed first to open exactly one
-            # slot - too many or too few open slots both break placement).
+            # editor.attach_amino_acid fails on this app's real, cut-from-a
+            # -PDB anchor atoms ("no coordinate for source anchor atom"),
+            # but verified live that raw fuse() (the primitive it wraps)
+            # works fine on those same real atoms when called directly -
+            # the problem is in attach_amino_acid's own pk1/pk2/pk3 "edit"
+            # preprocessing, not in fuse() itself. So this calls fuse()
+            # directly instead:
+            #   1. pair_fit (1 atom pair = translation only) moves the
+            #      freshly loaded cap fragment so its connecting atom sits
+            #      exactly on the anchor.
+            #   2. fuse mode 1 ("move and bond") forms the real covalent
+            #      bond between the two heavy atoms directly - verified live
+            #      that this succeeds on a real anchor with no error.
+            # fuse() does NOT touch hydrogens when bonding two heavy atoms
+            # directly (verified live: bonding onto an anchor N with its
+            # original 2 H's left it over-valent, CA+2H+new-bond = 4 bonds)
+            # - the anchor must already have exactly the right number of
+            # open valences before fuse runs, same as attach_amino_acid
+            # would have required.
             #
             # ace attaches via N: a freshly-cut backbone N (lost its bond to
-            # the preceding residue's C) only has its CA bond, i.e. TWO open
-            # valences - add hydrogens then trim to exactly one so only one
-            # slot remains open.
+            # the preceding residue's C) keeps its original hydrogens -
+            # trim down to exactly one so only one slot remains open for
+            # the new N-C(cap) bond (ace.pkl's own connecting C atom has no
+            # spare hydrogen to eliminate on its side, so this can't use
+            # attach_fragment's H-for-H swap mechanism - the anchor's extra
+            # H has to be removed explicitly instead).
             #
             # nme attaches via C: a freshly-cut carbonyl C (lost its bond to
             # the next residue's N) already has CA + the double-bonded O,
             # i.e. exactly ONE open valence already - no h_add needed, and
             # adding one would incorrectly block that slot.
-            if attach_to != "pk1":
-                self.pymol_cmd("select sele, first %s" % attach_to)
-                if fragment == "ace":
-                    self.pymol_cmd("h_add sele")
-                    self.pymol_cmd("select h_sele, (neighbor sele) and elem H")
-                    self.pymol_cmd("select extra_h, h_sele and not (first h_sele)")
-                    self.pymol_cmd("remove extra_h")
-                self.pymol_cmd("edit sele")
-                anchor = "sele"
-            else:
-                # Passing the literal string 'pk1' hits a legacy special
-                # case in attach_amino_acid that always creates a
-                # disconnected standalone object - the function's own source
-                # comment says callers should pass '?pk1' instead.
-                anchor = "?pk1"
-            cmd = "editor.attach_amino_acid('%s', '%s')" % (anchor, fragment)
+            #
+            # Deliberately never reuse the reserved name "sele" for our own
+            # bookkeeping here: "fragment" (which sketches the new cap)
+            # appears to reassign it to the freshly-sketched atoms as a
+            # side effect, which silently redirected the later pair_fit/
+            # fuse calls away from the real anchor - a dedicated name
+            # avoids that entirely.
+            connect_atom = "C" if fragment == "ace" else "N"
+            # the anchor's own substituent (besides CA) that must be
+            # excluded when isolating the newly-fused-in cap atoms below
+            keep_elem = "H" if fragment == "ace" else "O"
+            self.pymol_cmd("select cap_anchor, first %s" % attach_to)
+            if fragment == "ace":
+                self.pymol_cmd("h_add cap_anchor")
+                self.pymol_cmd("select h_sele, (neighbor cap_anchor) and elem H")
+                self.pymol_cmd("select extra_h, h_sele and not (first h_sele)")
+                self.pymol_cmd("remove extra_h")
+            self.pymol_cmd("delete _react_cap_tmp")
+            self.pymol_cmd("fragment %s, _react_cap_tmp, origin=0" % fragment)
+            self.pymol_cmd(
+                "select cap_connect, _react_cap_tmp and name %s" % connect_atom
+            )
+            self.pymol_cmd("pair_fit cap_connect, (cap_anchor)")
+            self.pymol_cmd("fuse cap_connect, (cap_anchor), 1")
+            # fuse() occasionally fails outright on a real anchor ("no
+            # target attachment vector found" - verified live, happens
+            # intermittently depending on the specific residue's local
+            # geometry) without raising from here, since pymol_cmd is
+            # fire-and-forget. Without a check, the code below would
+            # blindly select whatever atom happens to match (often just 1,
+            # unrelated to any cap) and rename IT to ACE/NME, corrupting a
+            # real atom. So this guards the whole rename/show step on
+            # actually finding a complete, newly-attached fragment first.
+            #
+            # fuse's own residue bookkeeping also isn't reliable even when
+            # it succeeds - verified live that the newly-fused atoms came
+            # out renamed to the anchor's own resn, which silently breaks
+            # clean_selection's "resn ACE+NME" filter. So identify the new
+            # atoms by connectivity instead (not by resn/resi, which fuse
+            # may have clobbered): the one new heavy neighbor fuse added to
+            # cap_anchor, plus everything reachable from it within the
+            # fragment (<=2 bonds covers all 6 atoms of either cap), minus
+            # cap_anchor's own original substituents.
+            self.pymol_cmd(
+                "python\n"
+                "_entry_sele = '(neighbor cap_anchor) and not name CA and not elem %s'\n"
+                "if cmd.count_atoms(_entry_sele) == 1:\n"
+                "    cmd.select('new_cap_entry', _entry_sele)\n"
+                "    cmd.select('new_cap_atoms', \"((new_cap_entry extend 2) and not (cap_anchor extend 1)) or new_cap_entry\")\n"
+                "    if cmd.count_atoms('new_cap_atoms') >= 5:\n"
+                "        cmd.alter('new_cap_atoms', \"resn='%s'\")\n"
+                "        cmd.sort()\n"
+                "        cmd.show('sticks', 'new_cap_atoms or cap_anchor')\n"
+                "        cmd.color('grey', 'new_cap_atoms and name C*')\n"
+                "    else:\n"
+                "        print('REACT: fuse did not fully attach the %s cap (fragment incomplete) - skipped')\n"
+                "else:\n"
+                "    print('REACT: fuse did not attach the %s cap (no new bond found) - skipped')\n"
+                "python end" % (keep_elem, fragment.upper(), fragment, fragment)
+            )
+            self.pymol_cmd("delete _react_cap_tmp")
+            self.pymol_cmd("unpick")
+            return
         else:
             return
 
@@ -623,6 +709,12 @@ class PymolSession(QObject):
         atoms_to_emit = list(self.atoms_selected)
         self.atoms_selected.clear()
         self.atomsSelectedSignal.emit(atoms_to_emit)
+
+    @pyqtSlot()
+    def return_included_sync(self):
+        atoms_to_emit = list(self.atoms_selected)
+        self.atoms_selected.clear()
+        self.includedSyncSignal.emit(atoms_to_emit)
 
     @pyqtSlot()
     def return_resn_check(self):

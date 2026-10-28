@@ -54,6 +54,7 @@ class ModelPDB(QtWidgets.QMainWindow):
         self.pymol.dihedralSignal.connect(self.update_dihedral)
         self.pymol.countAtomsSignal.connect(self.update_atom_count)
         self.pymol.resnSearchSignal.connect(self.handle_resn_search_result)
+        self.pymol.includedSyncSignal.connect(self.sync_included_bookkeeping)
 
         # Connect UI widgets:
         self.ui.select_byres.clicked.connect(self.update_inclusion_size)
@@ -424,7 +425,23 @@ class ModelPDB(QtWidgets.QMainWindow):
 
     def delayed_get_atoms(self):
         self.timer.stop()
-        self.pymol.get_selected_atoms(sele="included")
+        self.pymol.sync_included_atoms(sele="included")
+
+    @pyqtSlot(list)
+    def sync_included_bookkeeping(self, atoms):
+        """
+        Signal from PymolProcess after an automatic radius expansion
+        (update_inclusion_size -> expand_sele) finishes. Just refreshes
+        the Python-side bookkeeping list - expand_sele already built the
+        "included" PyMOL selection correctly, so this must not re-run
+        set_selection (that path is for update_selected_atoms, reserved
+        for actual new atom picks / the "Update manual selection" button).
+        :param atoms: atom IDs currently in the "included" selection
+        :return:
+        """
+        self.selected_atoms["included"] = atoms
+        self.pymol.pymol_cmd("count_atoms included")
+        self.pymol.pymol_cmd("count_atoms included not sol.")
 
     def create_model(self):
         if len(self.selected_atoms["included"]) < 1:
@@ -556,15 +573,28 @@ class ModelPDB(QtWidgets.QMainWindow):
             residues = list()
 
         prot = "model_tmp"
-        if term == "nterm":
-            names = ["C", "CA", "N", "H"]
-        else:
-            names = ["N", "CA", "C", "O"]
 
         for i in residues:
-            atoms = list()
-            for atom in names:
-                atoms.append("%s///%s/%s" % (prot, i, atom))
+            if term == "nterm":
+                n_sele = "%s///%s/N" % (prot, i)
+                # the N's hydrogen isn't reliably named "H" (this structure
+                # uses H01/H02/H03 etc.) - find it by connectivity instead,
+                # otherwise this selection resolves to zero atoms and
+                # get_dihedral fails outright, silently skipping capping
+                # entirely for every N-terminus.
+                atoms = [
+                    "%s///%s/C" % (prot, i),
+                    "%s///%s/CA" % (prot, i),
+                    n_sele,
+                    "first ((neighbor %s) and elem H)" % n_sele,
+                ]
+            else:
+                atoms = [
+                    "%s///%s/N" % (prot, i),
+                    "%s///%s/CA" % (prot, i),
+                    "%s///%s/C" % (prot, i),
+                    "%s///%s/O" % (prot, i),
+                ]
             self.pymol.get_dihedral(atoms[0], atoms[1], atoms[2], atoms[3])
 
     def save_pdb_model(self):
