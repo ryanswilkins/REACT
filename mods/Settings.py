@@ -299,43 +299,36 @@ class Settings:
                 },
                 "blocks": {},
                 "blocks_available": {
-                    "autoci": None,
+                    # Trimmed to blocks relevant for enzyme QM cluster-model
+                    # calculations (DFT geometry/frequency/property work,
+                    # mechanism studies, metalloenzyme active sites).
+                    # Removed as too specialized/exotic for routine use:
+                    # autoci, casresp, casscf, ice, cim, cis, coords,
+                    # compound, cosmors, md, mcrpa, mrcc, mrci, nbo, rel,
+                    # rocis, rr, esd, symmetry - see git history if any of
+                    # these turn out to be needed after all, they're easy to
+                    # re-add. "neb" is kept despite being a specialized
+                    # method too, since the "NEB-TS" job type already
+                    # depends on it (see the auto-select in
+                    # CalcSetupORCA.py's update_job_details).
                     "basis": None,
-                    "casresp": None,
-                    "casscf": None,
-                    "cipsi": None,
-                    "cim": None,
-                    "cis": None,
-                    "coords": None,
-                    "compound": None,
-                    "cosmors": None,
                     "cpcm": None,
                     "elprop": None,
                     "eprnmr": None,
-                    "esd": None,
                     "freq": None,
                     "geom": None,
                     "irc": None,
                     "loc": None,
-                    "mcrpa": None,
-                    "md": None,
                     "mdci": None,
                     "method": None,
                     "mp2": None,
-                    "mrcc": None,
-                    "mrci": None,
                     "neb": None,
                     "numgrad": None,
-                    "nbo": None,
                     "output": None,
                     "pal": None,
                     "paras": None,
                     "plots": None,
-                    "rel": None,
-                    "rocis": None,
-                    "rr": None,
                     "scf": None,
-                    "symmetry": None,
                 },
                 "basis_options": [
                     # ORCA basis sets - modifiers (pol1, pol2, diff) are built into the basis name
@@ -480,6 +473,17 @@ class Settings:
                 self._gaussian_settings = item
             elif key == "orca_settings":
                 self._orca_settings = item
+                # blocks_available is a fixed list of block TYPES the UI
+                # offers (not a user customization - the user's actual
+                # added block *content* lives in "blocks", which stays
+                # whatever was saved) - always use the current code's
+                # list rather than whatever got saved previously, so
+                # trimming/renaming entries here takes effect immediately
+                # instead of needing every existing user to delete their
+                # settings file.
+                self._orca_settings["blocks_available"] = copy.deepcopy(
+                    self.default_settings["orca_settings"]["blocks_available"]
+                )
         except KeyError:
             # Key doesn't exist in settings file, use defaults
             if key == "gaussian_settings":
